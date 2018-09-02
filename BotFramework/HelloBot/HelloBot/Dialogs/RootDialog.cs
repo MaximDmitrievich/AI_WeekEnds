@@ -15,15 +15,22 @@ namespace HelloBot.Dialogs
             return Task.CompletedTask;
         }
 
-        private async Task MessageReceivedAsync(IDialogContext context, IAwaitable<object> result)
+        private async Task MessageReceivedAsync(IDialogContext context, IAwaitable<IMessageActivity> result)
         {
-            var activity = await result as Activity;
+            IMessageActivity message = await result;
+            string text = message.Text;
 
-            // calculate something for us to return
-            int length = (activity.Text ?? string.Empty).Length;
-
-            // return our reply to the user
-            await context.PostAsync($"You sent {activity.Text} which was {length} characters");
+            if (text.ToUpper().Contains("ПРИВЕТ"))
+            {
+                IMessageActivity response = context.MakeMessage();
+                response.Text = $"Привет, @{context.Activity.From.Name}";
+                await context.PostAsync(response);
+            } else
+            {
+                IMessageActivity response = context.MakeMessage();
+                response.Text = $"Я тебя не понял, @{context.Activity.Recipient.Name}";
+                await context.PostAsync(response);
+            }
 
             context.Wait(MessageReceivedAsync);
         }
