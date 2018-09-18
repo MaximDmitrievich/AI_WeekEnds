@@ -30,52 +30,70 @@ namespace FaceBot.Dialogs
         private async Task MessageReceivedAsync(IDialogContext context, IAwaitable<IMessageActivity> result)
         {
             IMessageActivity message = await result;
-
             if (message.Attachments?.Count > 0)
             {
                 foreach (Attachment attach in message.Attachments)
                 {
-                    IList<DetectedFace> faces = await _faceclient.Face.DetectWithUrlAsync(attach.ContentUrl, true, true, Consts.faceAttributes);
-                    IList<IdentifyResult> ids = await _faceclient.Face.IdentifyAsync("AI_Weekend", faces.Select(x => x.FaceId).ToList() as IList<Guid>);
-                    IList<Person> names = await _faceclient.PersonGroupPerson.ListAsync("AI_Weekend");
+                    IList<DetectedFace> faces = await _faceclient.Face.DetectWithUrlAsync(attach.ContentUrl, true, false, Consts.faceAttributes);
+                    IList<IdentifyResult> ids = await _faceclient.Face.IdentifyAsync("aiweekend", faces.Select(x => x.FaceId.Value).ToList(), 5, 0.5);
+                    IList<Person> names = await _faceclient.PersonGroupPerson.ListAsync("aiweekend");
 
+                    List<HeroCard> items = new List<HeroCard>();
 
-                    
-
-                    foreach(var face in faces)
+                    foreach (var face in faces)
                     {
-                        List<ReceiptItem> items = new List<ReceiptItem>();
-                        List<Fact> facts = new List<Fact>();
+                        var lst = ids.Where(x => x.FaceId == face.FaceId.Value).ToList();
+                        var person = (lst?.Count > 0) && (lst[0].Candidates?.Count > 0) ? names.Where(x => x.PersonId == ids.Where(y => y.FaceId == face.FaceId.Value).Select(y => y.Candidates.Aggregate((l, r) => l.Confidence > r.Confidence ? l : r).PersonId).FirstOrDefault()) : null;
+                        string name = person != null ? person.FirstOrDefault().Name : "Неизвестно";
+                        string gender = face.FaceAttributes.Gender.Value == Gender.Male ? "Мужской" : "Женский";
+                        double age = face.FaceAttributes.Age.Value;
+                        string emos = Utilities.GetEmotions(face);
 
-                        items.Add(new ReceiptItem
+                        items.Add(new HeroCard
                         {
-                            Title = (ids.Where(x => x.FaceId == face.FaceId).ToList().Count > 0) ? names.Where(x => x.PersonId == ids.Where(y => y.FaceId == face.FaceId).Select(y => y.Candidates.Where(z => z.Confidence > 0.8)).Select(y => y.FirstOrDefault().PersonId).FirstOrDefault()).FirstOrDefault().Name : "Неизвестно",
-                            Subtitle = $"{face.FaceAttributes.Gender}",
-                            Price = $"{face.FaceAttributes.Age}",
-                            
-                        });
-                        facts.Add(new Fact
-                        {
-                            Key = "Эмоция",
-                            Value = $"{}"
+                            Title = $"{name}",
+                            Subtitle = $"Пол: {gender}",
+                            Text = $"Возраст: {age}" + "\n\n\u200c" + emos,
                         });
                     }
 
                     IMessageActivity response = context.MakeMessage();
 
-                    ReceiptCard results = new ReceiptCard
+                    HeroCard results = new HeroCard
                     {
                         Title = "Результат распознавания изображения",
-                        
-                        Total = $"Количество человек: {faces.Count}",
-
+                        Subtitle = $"Количество распознанных лиц: {faces.Count}",
+                        Images = new List<CardImage> { new CardImage { Url = attach.ContentUrl } }
                     };
 
                     response.Attachments.Add(results.ToAttachment());
 
                     await context.PostAsync(response);
+
+                    foreach (var item in items)
+                    {
+                        IMessageActivity faceOut = context.MakeMessage();
+                        faceOut.Attachments.Add(item.ToAttachment());
+                        await context.PostAsync(faceOut);
+                    }
+
+                    
                 }
+            } else if (message.Text == "/start")
+            {
+                IMessageActivity response = context.MakeMessage();
+                HeroCard results = new HeroCard
+                {
+                    Title = "Бот-детектор",
+                    Subtitle = $"Распознаю твою личность, эмоцию, пол и возраст",
+                    Text = "Просто отправь мне картинку с лицами"
+                };
+
+                response.Attachments.Add(results.ToAttachment());
+
+                await context.PostAsync(response);
             }
+            
 
             context.Wait(MessageReceivedAsync);
         }
